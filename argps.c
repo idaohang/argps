@@ -19,48 +19,15 @@
 #define MAX_BUFFER_SIZE 1024
 
 void getLine( char *& buffer );
+int createConnection( const char *hostname, const char *port );	// port number as string
 
 int main( int argc, char **argv )
 {
-	int sockfd;
-	struct addrinfo hints;
-	struct addrinfo *servinfo;
-
-	memset( &hints, 0, sizeof( hints ) );
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	if( getaddrinfo( argv[1], PORT_NUMBER, &hints, &servinfo ) != 0 )
+	int sockfd = createConnection( argv[1], PORT_NUMBER );
+	if( sockfd < 0 )
 	{
-		fprintf( stderr, "getaddrinfo() failure.\n" );
-		exit( EXIT_FAILURE );
+		fprintf( stderr, "Couldn't connect, terminating.\n" );
 	}
-
-	// Connect to the first result possible.
-	struct addrinfo *p = NULL;
-	for( p = servinfo; p != NULL; p = p->ai_next )
-	{
-		sockfd = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
-		if( sockfd == -1 )
-		{
-			continue;
-		}
-
-		if( connect( sockfd, p->ai_addr, p->ai_addrlen ) == -1 )
-		{
-			continue;
-		}
-
-		break;
-	}
-
-	if( p == NULL )
-	{
-		fprintf( stderr, "connect() failure.\n" );
-		exit( EXIT_FAILURE );
-	}
-
-	freeaddrinfo( servinfo );
 
 	while( 1 )
 	{
@@ -68,6 +35,10 @@ int main( int argc, char **argv )
 		printf( ">> " );
 		getLine( buffer );
 
+		if( buffer == NULL )
+		{
+			break;
+		}
 		int numSent;
 		if( ( numSent = send( sockfd, buffer, strlen( buffer ) + 1, 0 ) ) == -1 )
 		{
@@ -103,6 +74,58 @@ void getLine( char *& buffer )
 		}
 	} while( c != EOF && c != '\n' );
 
-	buffer[i] = '\0';
+	if( i == 0 )
+	{
+		free( buffer );
+		buffer = NULL;
+	}
+	else
+	{
+		buffer[i] = '\0';
+	}
 }
 
+int createConnection( const char *hostname, const char *port )
+{
+	int sockfd;
+	struct addrinfo hints;
+	struct addrinfo *servinfo;
+
+	memset( &hints, 0, sizeof( hints ) );
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if( getaddrinfo( hostname, port, &hints, &servinfo ) != 0 )
+	{
+		fprintf( stderr, "getaddrinfo() failure.\n" );
+		return -1;
+	}
+
+	// Connect to the first result possible.
+	struct addrinfo *p = NULL;
+	for( p = servinfo; p != NULL; p = p->ai_next )
+	{
+		sockfd = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
+		if( sockfd == -1 )
+		{
+			continue;
+		}
+
+		if( connect( sockfd, p->ai_addr, p->ai_addrlen ) == -1 )
+		{
+			continue;
+		}
+
+		break;
+	}
+
+	if( p == NULL )
+	{
+		fprintf( stderr, "connect() failure.\n" );
+		return -1;
+	}
+
+	freeaddrinfo( servinfo );
+
+	return sockfd;
+}
