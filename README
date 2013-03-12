@@ -1,2 +1,9 @@
 Intended to work on Rasperry Pi using gpsd.
 
+To run gpsd:
+sudo gpsd /dev/ttyUSB0 -F /var/run/gpsd.sock
+
+View GPS data to determine if unit works:
+cgps -s
+
+

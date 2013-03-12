@@ -24,6 +24,8 @@
 void getLine( char *& buffer );
 int createConnection( const char *hostname, const char *port );	// port number as string
 
+static struct gps_data_t gpsData;
+
 int main( int argc, char **argv )
 {
 	// Enforce proper command line arguments.
@@ -40,67 +42,52 @@ int main( int argc, char **argv )
 		fprintf( stderr, "Couldn't connect to %s.\n", argv[1] );
 		exit( EXIT_FAILURE );
 	}
+	else
+	{
+		printf( "Connected to %s\n.", argv[0] );
+	}
 
 	// Connect to gpsd.
-	static struct gps_data_t *GPS = NULL;
-	if( gps_open( "127.0.0.1", "2947", GPS ) < 0 )
+	if( gps_open( "localhost", DEFAULT_GPSD_PORT, &gpsData ) != 0 )
 	{
-		fprintf( stderr, "Couldn't connect to gpsd.\n" );
+		fprintf( stderr, "Couldn't connect to gpsd, errno = %d, %s.\n", errno, gps_errstr( errno ) );
 		exit( EXIT_FAILURE );
+	}
+	else
+	{
+		printf( "Connected to gpsd.\n" );
 	}
 
 	// Register for updates from gpsd.
-	gps_stream( GPS, WATCH_ENABLE | WATCH_JSON, NULL );
+	gps_stream( &gpsData, WATCH_ENABLE | WATCH_JSON, NULL );
 
 	printf( "Waiting for gps lock." );
-	while( GPS->status == 0 )
+	for(;;)
 	{
-		if( gps_waiting( GPS, 500 ) )
+		if( !gps_waiting( &gpsData, 5000000 ) )
 		{
-			// Error check the GPS data read.
-			if( gps_read( GPS ) == -1 )
+			fprintf( stderr, "GPS fix timed out.\n" );
+			exit( EXIT_FAILURE );
+		}
+		else
+		{
+			if( gps_read( &gpsData ) == -1 )
 			{
-				fprintf( stderr, "gps_read() error, terminating.\n" );
-				gps_stream( GPS, WATCH_DISABLE, NULL );
-				gps_close( GPS );
-				close( sockfd );
-				exit( EXIT_FAILURE );
+				fprintf( stderr, "gps_read() error, errno = %d\n", errno );
 			}
 			else
 			{
-				// Status > 0 means data is present.
-				if( GPS->status > 0 )
+				if( isnan( gpsData.fix.latitude ) || isnan( gpsData.fix.longitude ) )
 				{
-					if( isnan( GPS->fix.latitude ) || isnan( GPS->fix.longitude ) )
-					{
-						fprintf( stderr, "Couldn't get GPS fix.\n" );
-						gps_stream( GPS, WATCH_DISABLE, NULL );
-						gps_close( GPS );
-						close( sockfd );
-						exit( EXIT_FAILURE );
-					}
-					else
-					{
-						printf( "\n" );
-						printf( "latitude: %f\n", GPS->fix.latitude );
-						printf( "longitude: %f\n", GPS->fix.longitude );
-					}
+					fprintf( stderr, "Bad GPS fix.\n" );
 				}
 				else
 				{
-					printf( "." );
+					printf( "Latitude: %f\n", gpsData.fix.latitude );
+					printf( "Longitude: %f\n", gpsData.fix.longitude );
 				}
 			}
 		}
-		// If gps_waiting() returns false, gpsd has shut the stream down (done
-		// periodically). Re-open the stream to continue reading GPS data.
-		else
-		{
-			gps_stream( GPS, WATCH_ENABLE | WATCH_JSON, NULL );
-		}
-
-		// Sleep so we're not sending too much data.
-		sleep( 1 );
 	}
 
 	close( sockfd );
